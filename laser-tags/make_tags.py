@@ -16,7 +16,8 @@ DXF details (AutoCAD R12, units mm):
 Text is converted to outlines, so no fonts are needed on the laser PC.
 No kerf compensation is applied.
 
-Tag lists come from the plant model (js/plant.js, js/tags.js, P&ID V24).
+Tag lists come from P&ID V24 (drawing + legend tables) and the PLC tags in
+js/tags.js.
 Edit EQUIPMENT / SENSORS below and re-run to change them.
 """
 import math
@@ -28,9 +29,12 @@ from matplotlib.textpath import TextPath
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # (tag id, name, has a cable). id None -> name-only tag, no cable tag.
+# Items with a cable also get a small 30 x 10 mm tag for that cable.
 EQUIPMENT = [
-    # heat pump (n-butane)
+    # ---- heat pump (n-butane)
     ('HP-CO01', 'COMPRESSOR', True),
+    ('HP-VS01', 'COMPRESSOR VSD', True),
+    ('HP-OHE01', 'OIL HEATER', True),
     ('HP-SA01', 'SUCTION ACCUMULATOR', False),
     ('HP-OS01', 'OIL SEPARATOR', False),
     ('HP-CD01', 'CONDENSER', False),
@@ -40,23 +44,84 @@ EQUIPMENT = [
     ('HP-LLSV01', 'LIQUID LINE SOLENOID', True),
     ('HP-EEV01', 'EXPANSION VALVE', True),
     ('HP-EVP01', 'EVAPORATOR + IHX', False),
-    # source loop
-    ('EX-SP01', 'PROPANE HX', False),
-    ('SO-ST01', 'HOLD-UP TANK', False),
+    ('HP-IV01', 'ISOLATION VALVE', False),
+    ('HP-MV02', 'MANUAL VALVE', False),
+    ('HP-MV03', 'MANUAL VALVE', False),
+    ('HP-NV01', 'OIL RETURN NEEDLE VALVE', False),
+    ('HP-DV01', 'OIL DRAIN VALVE', False),
+    ('HP-RV01', 'RELIEF VALVE', False),
+    ('HP-RV02', 'RELIEF VALVE', False),
+    ('HP-PG01', 'PRESSURE GAUGE', False),
+    ('HP-PG02', 'PRESSURE GAUGE', False),
+    ('HP-SG01', 'SIGHT GLASS', False),
+    ('HP-SG02', 'SIGHT GLASS', False),
+    ('HP-SG03', 'SIGHT GLASS', False),
+    ('HP-SG04', 'SIGHT GLASS', False),
+    ('HP-SG05', 'SIGHT GLASS', False),
+    # ---- source loop
     ('SO-PU31', 'SOURCE PUMP', True),
-    ('WW-HX02', 'LAB COOLER 2', False),
+    ('SO-VS31', 'SOURCE PUMP VSD', True),
+    ('SO-ST01', 'HOLD-UP TANK', False),
+    ('SO-ET31', 'EXPANSION TANK', False),
+    ('EX-SP01', 'PROPANE HX', False),
     (None, 'PROPANE HEAT PUMP', False),
-    # warm water + cooling water
+    ('WW-HX02', 'LAB COOLER 2', False),
+    ('SO-BV31', 'BALL VALVE', False),
+    ('SO-BV32', 'BALL VALVE', False),
+    ('SO-BV33', 'BALL VALVE', False),
+    ('SO-BV34', 'BALL VALVE', False),
+    ('SO-BV35', 'BALL VALVE', False),
+    ('SO-BV36', 'BALL VALVE', False),
+    ('SO-BV37', 'BALL VALVE', False),
+    ('SO-BV38', 'BALL VALVE', False),
+    ('SO-BV39', 'BALL VALVE', False),
+    ('SO-BV50', 'BALL VALVE', False),
+    ('SO-MV31', 'BALANCING VALVE', False),
+    ('SO-CV31', 'CHECK VALVE', False),
+    ('SO-WS01', 'STRAINER', False),
+    ('SO-RV31', 'RELIEF VALVE', False),
+    ('SO-AV31', 'AIR VENT', False),
+    ('SO-DV01', 'DRAIN VALVE', False),
+    # ---- warm water + cooling water + fresh water
     ('WW-PU41', 'WARM WATER PUMP', True),
+    ('WW-VS41', 'WARM WATER PUMP VSD', True),
     ('WW-HX01', 'LAB COOLER 1', False),
+    ('WW-ET41', 'EXPANSION TANK', False),
     ('WW-GV41', 'MIXING VALVE', True),
     ('WW-GV42', 'MAKE-UP VALVE', True),
+    ('WW-BV41', 'BALL VALVE', False),
+    ('WW-BV42', 'BALL VALVE', False),
+    ('WW-MV41', 'BALANCING VALVE', False),
+    ('WW-MV42', 'BALANCING VALVE', False),
+    ('WW-MV43', 'BALANCING VALVE', False),
+    ('WW-CV41', 'CHECK VALVE', False),
+    ('WW-CV42', 'CHECK VALVE', False),
+    ('WW-WS01', 'STRAINER', False),
+    ('WW-RV41', 'RELIEF VALVE', False),
+    ('WW-AV41', 'AIR VENT', False),
+    ('WW-PG01', 'PRESSURE GAUGE', False),
     ('CW-GV21', 'COOLING WATER VALVE', True),
     (None, 'DRY COOLER', False),
-    # hot water + steam
-    ('HW-FTK01', 'FLASH TANK', False),
+    ('FW-BV71', 'BALL VALVE', False),
+    ('FW-CV71', 'CHECK VALVE', False),
+    ('FW-LV71', 'PRESSURE REDUCING VALVE', False),
+    ('FW-PG01', 'PRESSURE GAUGE', False),
+    # ---- hot water + steam
     ('HW-PU51', 'HOT WATER PUMP', True),
+    ('HW-VS51', 'HOT WATER PUMP VSD', True),
+    ('HW-FTK01', 'FLASH TANK', False),
+    ('HW-BV51', 'BALL VALVE', False),
+    ('HW-BV52', 'BALL VALVE', False),
+    ('HW-BV53', 'BALL VALVE', False),
+    ('HW-MV51', 'BALANCING VALVE', False),
+    ('HW-CV51', 'CHECK VALVE', False),
+    ('HW-WS01', 'STRAINER', False),
+    ('HW-RV01', 'RELIEF VALVE', False),
+    ('HW-PG01', 'PRESSURE GAUGE', False),
+    ('HW-PG02', 'PRESSURE GAUGE', False),
     ('ST-GV61', 'STEAM VALVE', True),
+    ('ST-BV61', 'BALL VALVE', False),
+    ('ST-TG01', 'TEMPERATURE GAUGE', False),
 ]
 
 SENSORS = [
@@ -65,6 +130,8 @@ SENSORS = [
     # heat pump
     'HP-TT01', 'HP-TT02', 'HP-TT03', 'HP-TT04', 'HP-TT05', 'HP-TT06', 'HP-TT07',
     'HP-TC02', 'HP-TC03', 'HP-PT01', 'HP-PT02', 'HP-PT03', 'HP-PT06', 'HP-MF01', 'HP-GD01',
+    # heat pump safety switches / compressor protection
+    'HP-PS01', 'HP-HPS01', 'HP-HPS02', 'HP-LPS01', 'HP-TE01', 'HP-OLM01',
     # warm water + cooling water
     'WW-TT41', 'WW-TT42', 'WW-TT43', 'WW-TC41', 'WW-PT41', 'WW-VF41',
     'CW-TC21', 'CW-TC22', 'CW-TC23',
@@ -77,7 +144,7 @@ SENSORS = [
 EQ = dict(w=60, h=30, r=2.0, slot_w=2.0, slot_l=10.0, slot_x=3.5)
 SE = dict(w=30, h=10, r=1.0, slot_w=1.6, slot_l=6.0, slot_x=2.4)
 GAP = 2.0          # spacing between tags on the sheet
-EQ_COLS = 4        # 4 x 62 = 246 mm wide sheet
+EQ_COLS = 8        # 8 x 62 = 494 mm wide sheet
 SE_COLS = 8        # 8 x 32 = 254 mm wide sheet
 
 FONT = FontProperties(family='DejaVu Sans', weight='bold')
@@ -104,6 +171,13 @@ def slot(cx, cy, w, l):
 
 
 _CAP = None
+
+
+def width(s, cap):
+    """Width in mm of s at cap height `cap`, unshrunk."""
+    pts = text(s, 0, 0, cap, 1e9)
+    xs = [x for p in pts for x, _ in p]
+    return max(xs) - min(xs)
 
 
 def text(s, cx, cy, cap, max_w):
@@ -133,7 +207,15 @@ def equipment_tag(x, y, tid, name):
     eng = []
     if tid:
         eng += text(tid, cx, y + 19.5, 6.5, tw)
-        eng += text(name, cx, y + 8.0, 3.2, tw)
+        # one line, shrunk to fit, unless that would go below ~2.6 mm cap height
+        if width(name, 2.6) <= tw or ' ' not in name:
+            eng += text(name, cx, y + 8.0, 3.2, tw)
+        else:  # wrap long names onto two lines, split nearest the middle
+            words = name.split()
+            cuts = range(1, len(words))
+            k = min(cuts, key=lambda i: abs(len(' '.join(words[:i])) - len(' '.join(words[i:]))))
+            eng += text(' '.join(words[:k]), cx, y + 10.2, 2.8, tw)
+            eng += text(' '.join(words[k:]), cx, y + 5.4, 2.8, tw)
     else:
         eng += text(name, cx, y + g['h'] / 2, 4.5, tw)
     return cut, eng
@@ -203,7 +285,7 @@ def preview(path, sheets):
     from matplotlib.path import Path
     from matplotlib.patches import PathPatch
 
-    fig, axes = plt.subplots(len(sheets), 1, figsize=(12, 14),
+    fig, axes = plt.subplots(len(sheets), 1, figsize=(14, 16),
                              gridspec_kw={'height_ratios': [s[3] for s in sheets]})
     for ax, (title, cut, eng, _) in zip(axes, sheets):
         if eng:
