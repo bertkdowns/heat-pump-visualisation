@@ -64,7 +64,7 @@ EQUIPMENT = [
     ('SO-ST01', 'HOLD-UP TANK', False),
     ('SO-ET31', 'EXPANSION TANK', False),
     ('EX-SP01', 'PROPANE HX', False),
-    (None, 'PROPANE HEAT PUMP', False),
+    ('SO-HP31', 'PROPANE HEAT PUMP', True),
     ('WW-HX02', 'LAB COOLER 2', False),
     ('SO-BV31', 'BALL VALVE', False),
     ('SO-BV32', 'BALL VALVE', False),
@@ -138,6 +138,8 @@ SENSORS = [
     # hot water + steam
     'HW-TT51', 'HW-TT52', 'HW-TC51', 'HW-PT51', 'HW-VF51', 'HW-LT51',
     'ST-PT61', 'ST-TT61', 'ST-VF61',
+    # control / power cables
+    'PLC ETHERNET', 'PLC POWER', 'EMERGENCY STOP', 'HP-CO01 MODBUS',
 ]
 
 # ---------------------------------------------------------------- geometry
@@ -227,7 +229,11 @@ def sensor_tag(x, y, tid):
            slot(x + g['slot_x'], y + g['h'] / 2, g['slot_w'], g['slot_l']),
            slot(x + g['w'] - g['slot_x'], y + g['h'] / 2, g['slot_w'], g['slot_l'])]
     tw = g['w'] - 2 * (g['slot_x'] + g['slot_w'] / 2 + 1.6)
-    return cut, text(tid, x + g['w'] / 2, y + g['h'] / 2, 4.5, tw)
+    cx, cy = x + g['w'] / 2, y + g['h'] / 2
+    if width(tid, 2.6) <= tw or ' ' not in tid:
+        return cut, text(tid, cx, cy, 4.5, tw)
+    a, b = tid.split(' ', 1)  # two lines, e.g. "EMERGENCY" / "STOP"
+    return cut, text(a, cx, cy + 2.1, 2.6, tw) + text(b, cx, cy - 2.1, 2.6, tw)
 
 
 def sheet(items, make, w, h, cols):
