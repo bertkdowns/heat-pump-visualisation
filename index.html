@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SGHP Live Plant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="stage"></div>
+
+  <header id="top">
+    <div class="brand">
+      <span class="logo">SGHP</span>
+      <span class="name">Steam generating heat pump<small>n-butane · Ahuora lab · live</small></span>
+    </div>
+    <nav id="views"></nav>
+    <div class="tools">
+      <button id="present" title="Presentation mode (P)">▶ Present</button>
+      <button id="labels" title="Label mode (L)">Labels: all</button>
+      <button id="panel-toggle" title="Show or hide the side panel">Panel</button>
+      <button id="fullscreen" title="Fullscreen (F)">⛶</button>
+      <button id="token-btn" title="Change InfluxDB token">🔑</button>
+      <span id="status" class="pill">CONNECTING</span>
+      <span id="clock"></span>
+    </div>
+    <div id="progress"><i></i></div>
+  </header>
+
+  <aside id="panel">
+    <h2 id="p-title"></h2>
+    <p id="p-desc"></p>
+    <div id="kpis"></div>
+    <h3 id="trend-h">Trends</h3>
+    <div id="trends"></div>
+  </aside>
+
+  <div id="alarms"></div>
+
+  <dialog id="connect">
+    <form method="dialog">
+      <h2>Connect to InfluxDB</h2>
+      <p>Paste a <b>read-only</b> token for the <code>data</code> bucket. It is kept only in this browser.
+        You can also open the page as <code>…/?token=YOUR_TOKEN</code>, for example on a kiosk.</p>
+      <input id="token-input" type="password" autocomplete="off" placeholder="InfluxDB API token" required>
+      <p id="connect-err" class="err"></p>
+      <menu><button value="ok" class="primary">Connect</button></menu>
+    </form>
+  </dialog>
+
+  <footer id="legend">
+    <div class="scale">
+      <span>0 °C</span><div class="bar"></div><span>150 °C</span>
+    </div>
+    <div class="keys">
+      <span><i class="sw water"></i>Water</span>
+      <span><i class="sw liq"></i>Butane liquid</span>
+      <span><i class="sw vap"></i>Butane vapour</span>
+      <span><i class="sw tp"></i>Two-phase</span>
+      <span><i class="sw steam"></i>Steam</span>
+      <span><i class="sw sig"></i>Control loop</span>
+    </div>
+    <div class="hint">Drag to orbit · scroll to zoom · 1–5 views · P present · L labels</div>
+  </footer>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
