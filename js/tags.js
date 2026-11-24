@@ -76,11 +76,66 @@ export const TAGS = {
   STTT61: T('Steam temperature'),
   STGV61: PCT('Steam valve feedback'),
   STGV61O: PCT('Steam valve output'),
+
+  // PHNIX propane heat pump SO-HP31 (see MODBUS below)
+  PX_MODE: { kind: 'S', unit: '', scale: 1, dp: 0, desc: 'PHNIX mode (1 heating, 250 defrost, 0 cooling)' },
+  PX_SET: T('PHNIX water set point'),
+  PX_TIN: T('PHNIX water inlet (back from EX-SP01)'),
+  PX_TOUT: T('PHNIX water outlet (to EX-SP01)'),
+  PX_TAMB: T('Outdoor air at PHNIX'),
+  PX_TCOIL: T('PHNIX air coil'),
+  PX_TSUC: T('PHNIX suction (candidate)'),
+  PX_TDIS1: T('PHNIX discharge, system 1'),
+  PX_TDIS2: T('PHNIX discharge, system 2'),
+  PX_PLO1: { kind: 'P', unit: 'bar g', scale: 0.1, dp: 1, desc: 'PHNIX low pressure, system 1' },
+  PX_PLO2: { kind: 'P', unit: 'bar g', scale: 0.1, dp: 1, desc: 'PHNIX low pressure, system 2' },
+  ...pxBoard(1),
+  ...pxBoard(2),
 };
+
+function pxBoard(n) {
+  const s = (unit, scale, dp, desc) => ({ kind: 'S', unit, scale, dp, desc: `PHNIX compressor ${n}: ${desc}` });
+  return {
+    [`PX_C${n}HZ`]: s('Hz', 1, 0, 'actual frequency'),
+    [`PX_C${n}CMD`]: s('Hz', 1, 0, 'commanded frequency'),
+    [`PX_C${n}A`]: s('A', 0.1, 1, 'inverter input current'),
+    [`PX_C${n}V`]: s('V', 1, 0, 'inverter supply voltage (line to line)'),
+    [`PX_C${n}DC`]: s('V', 1, 0, 'DC-link voltage'),
+    [`PX_C${n}TM`]: { kind: 'T', unit: '°C', scale: 1, dp: 0, desc: `PHNIX compressor ${n}: inverter module temperature (likely)` },
+    [`PX_C${n}ST`]: s('', 1, 0, 'inverter status word'),
+    [`PX_C${n}FLT`]: s('', 1, 0, 'inverter protection word (undecoded)'),
+  };
+}
+
+// The PHNIX logs raw Modbus registers (topic modbus/device/N/registers, field = register).
+// Device 0 is the PHNIX controller; devices 3 and 4 are compressor inverter boards 1 and 2.
+// Mapping from the phnix-analysis reports; values are signed 16-bit, 32767 = sensor fault.
+export const MODBUS = {
+  PX_MODE: [0, 2012], PX_SET: [0, 2013], PX_TIN: [0, 2023], PX_TOUT: [0, 2024], PX_TAMB: [0, 2026],
+  PX_TCOIL: [0, 2027], PX_TSUC: [0, 2043], PX_TDIS1: [0, 2047], PX_TDIS2: [0, 2048],
+  PX_PLO1: [0, 2087], PX_PLO2: [0, 2088],
+};
+for (const [n, dev] of [[1, 3], [2, 4]]) {
+  Object.assign(MODBUS, {
+    [`PX_C${n}HZ`]: [dev, 2102], [`PX_C${n}CMD`]: [dev, 1999], [`PX_C${n}A`]: [dev, 2106], [`PX_C${n}V`]: [dev, 2105],
+    [`PX_C${n}DC`]: [dev, 2108], [`PX_C${n}TM`]: [dev, 2110], [`PX_C${n}ST`]: [dev, 2099], [`PX_C${n}FLT`]: [dev, 2100],
+  });
+}
+// Flux filter for a set of MODBUS tags, and the lookup back from topic + register to tag
+export function modbusFilter(tags) {
+  const byDev = {};
+  for (const t of tags) { const [d, reg] = MODBUS[t]; (byDev[d] ||= []).push(`r._field == "${reg}"`); }
+  // plain == comparisons: InfluxDB can push these down to its index (contains() scans everything)
+  return Object.entries(byDev)
+    .map(([d, regs]) => `(r.topic == "modbus/device/${d}/registers" and (${regs.join(' or ')}))`)
+    .join(' or ');
+}
+export const MODBUS_TAG = Object.fromEntries(Object.entries(MODBUS).map(([t, [d, reg]]) => [`${d}/${reg}`, t]));
 
 // "HPTT02" -> "HP-TT02"
 export function tagLabel(tag) {
   if (tag === 'HPEV01_Superheat') return 'HP-SH';
+  if (tag.startsWith('PX_')) return 'SO-HP31';
   const m = tag.match(/^([A-Z]{2})([A-Z]{2}\d{2})(O?)/);
   return m ? `${m[1]}-${m[2]}${m[3]}` : tag;
 }
@@ -151,5 +206,12 @@ export function derived(V) {
   const hg = 2676 + 1.5 * (V('STTT61') - 100);
   const hf = 4.19 * V('WWTT42');
   X.steamKgH = V('STPT61') > 0.05 && X.qCond > 0 ? X.qCond / (hg - hf) * 3600 : 0;
+  // PHNIX: apparent input power from the inverter boards (no power factor is logged)
+  const kva = (n) => (V(`PX_C${n}A`) > 0 ? Math.sqrt(3) * V(`PX_C${n}V`) * V(`PX_C${n}A`) / 1000 : 0);
+  X.pxKVA = Number.isFinite(V('PX_C1A')) || Number.isFinite(V('PX_C2A')) ? kva(1) + kva(2) : NaN;
+  X.pxRun = (V('PX_C1HZ') > 0 ? 1 : 0) + (V('PX_C2HZ') > 0 ? 1 : 0);
+  X.pxDT = V('PX_TOUT') - V('PX_TIN');
+  const mode = V('PX_MODE');
+  X.pxMode = mode === 250 ? 'DEFROST' : mode === 1 ? 'HEATING' : mode === 0 ? 'COOLING' : Number.isFinite(mode) ? `mode ${mode}` : '—';
   return X;
 }

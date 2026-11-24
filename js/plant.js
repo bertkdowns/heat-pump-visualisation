@@ -120,6 +120,7 @@ const MAT = {
   dark: new THREE.MeshStandardMaterial({ color: 0x343b47, metalness: 0.5, roughness: 0.5 }),
   blue: new THREE.MeshStandardMaterial({ color: 0x2c6ea6, metalness: 0.5, roughness: 0.35 }),
   green: new THREE.MeshStandardMaterial({ color: 0x2f7d5b, metalness: 0.4, roughness: 0.45 }),
+  bitzer: new THREE.MeshStandardMaterial({ color: 0x2f8a47, metalness: 0.25, roughness: 0.5 }),
   orange: new THREE.MeshStandardMaterial({ color: 0xe48a2a, metalness: 0.3, roughness: 0.5 }),
   cabinet: new THREE.MeshStandardMaterial({ color: 0xc9ced6, metalness: 0.2, roughness: 0.6 }),
   glass: new THREE.MeshStandardMaterial({
@@ -435,7 +436,7 @@ export class Plant {
     const pct = (tag, k = 1) => (D) => (nz(D.V(tag)) / 100) * k;
 
     this.zone('hp', 'HEAT PUMP · n-BUTANE', -14, 13.8, -4.6, 6.9, 0xffb347);
-    this.zone('so', 'SOURCE LOOP', -17, 0.6, 6.9, 17.2, 0x4cd97b);
+    this.zone('so', 'SOURCE LOOP', -16, 0.6, 6.9, 17.2, 0x4cd97b);
     this.zone('ww', 'WARM WATER & COOLING', -17, 0.7, -19.4, -4.6, 0xffd23f);
     this.zone('hw', 'HOT WATER & STEAM', 0.7, 17.4, -19.4, -4.6, 0xff6a5a);
 
@@ -455,7 +456,7 @@ export class Plant {
     this.inst('hp', 'HPTT01', [5.6, Y, 5], { off: [0, 1.4, 0] });
 
     // discharge -> oil separator -> condenser
-    this.pipe('hp', [[10.5, Y, 5], [12.2, Y, 5], [12.2, Y, -3], [9.05, Y, -3]], { kind: 'vap', r: 0.14, tA: 'HPTT02', tB: 'HPTT02', flow: mf(VAP * 1.6) });
+    this.pipe('hp', [[10, Y + 1.15, 5], [11.3, Y + 1.15, 5], [11.3, Y, 5], [12.2, Y, 5], [12.2, Y, -3], [9.05, Y, -3]], { kind: 'vap', r: 0.12, tA: 'HPTT02', tB: 'HPTT02', flow: mf(VAP * 1.6) });
     this.inst('hp', 'HPTT02', [12.2, Y, 3.6], { off: [0.9, 1.2, 0] });
     this.inst('hp', 'HPPT02', [12.2, Y, 2.5], { off: [0.9, 1.2, 0] });
     this.vessel('hp', [12.2, 0, 0.6], 0.42, 2.3, { temp: 'HPTT02' });
@@ -529,12 +530,27 @@ export class Plant {
     this.pipe('so', [[-7.4, Y, 11.75], [-7.4, Y, 15], [-6.05, Y, 15]], { kind: 'water', r: 0.17, tA: 'SOTT33', flow: soF });
     this.inst('so', 'SOTT33', [-7.4, Y, 13.2], { off: [-1.0, 1.2, 0] });
 
-    // propane heat pump (PHNIX) — source heater
-    this.fanUnit('so', [-12.5, 0, 11.5], [2.6, 2.0, 2.0], 1, (D) => ((nz(D.V('SOTT33')) - nz(D.V('SOTT32'))) > 0.5 ? 2.5 : 0));
-    this.eq('so', [-12.5, 3.0, 11.5], 'PROPANE HEAT PUMP', 'PHNIX');
-    const phF = (D) => ((nz(D.V('SOTT33')) - nz(D.V('SOTT32'))) > 0.5 ? 1.2 : 0);
-    this.pipe('so', [[-11.2, Y, 10.8], [-7.9, Y, 10.8]], { kind: 'vap', r: 0.09, tA: (D) => nz(D.V('SOTT33')) + 8, flow: phF });
-    this.pipe('so', [[-7.9, Y, 11.45], [-11.2, Y, 11.45]], { kind: 'liq', r: 0.09, tA: 'SOTT32', flow: phF });
+    // PHNIX propane heat pump SO-HP31: air-source R290 unit with two inverter compressors.
+    // Its own water circuit carries the heat to EX-SP01.
+    const pxRun = (D) => nz(D.X.pxRun);
+    this.fanUnit('so', [-12.6, 0, 11.4], [3.3, 2.1, 1.9], 2, (D) => (pxRun(D) ? 1.2 + nz(D.V('PX_C1HZ')) / 60 : 0));
+    this.eq('so', [-12.6, 3.0, 11.4], 'PROPANE HEAT PUMP', 'SO-HP31 · PHNIX',
+      (D) => `<span class="${D.X.pxMode === 'DEFROST' ? 'off' : pxRun(D) ? 'on' : ''}">${D.X.pxMode}</span> · set ${fmt(D.V('PX_SET'), 0)} °C`);
+    const phF = (D) => (pxRun(D) ? 1.4 : 0);
+    this.pipe('so', [[-10.95, Y, 10.8], [-7.9, Y, 10.8]], { kind: 'water', r: 0.11, tA: 'PX_TOUT', flow: phF });
+    this.pipe('so', [[-7.9, Y, 11.45], [-10.95, Y, 11.45]], { kind: 'water', r: 0.11, tA: 'PX_TIN', flow: phF });
+    this.inst('so', 'PX_TOUT', [-9.6, Y, 10.8], { off: [0.2, 1.3, -0.9], name: 'SO-HP31 T<sub>out</sub>' });
+    this.inst('so', 'PX_TIN', [-9.6, Y, 11.45], { off: [0.2, 0.9, 1.1], name: 'SO-HP31 T<sub>in</sub>' });
+    this.inst('so', 'PX_TAMB', [-14.25, 1.6, 11.4], { off: [-0.9, 1.0, 0.6], name: 'Outdoor air' });
+    // controller panel: both compressors
+    const pel = this.label([-12.6, 1.3, 13.5], `<span class="tn">SO-HP31 compressors</span><span class="vsd"></span>`, 'tag k-S sys-so wide');
+    const pv = pel.querySelector('.vsd');
+    this.updaters.push((D) => {
+      const row = (n) => `<b>${fmt(D.V(`PX_C${n}HZ`), 0)}</b><i>Hz</i> <b>${fmt(D.V(`PX_C${n}A`), 1)}</b><i>A</i>`;
+      pv.innerHTML = `${row(1)}<br>${row(2)}`;
+      pel.classList.toggle('stale', D.stale('PX_C1HZ'));
+    });
+    this.labels.push({ sys: 'so', el: pel });
 
     // hold-up tank
     const tank = this.vessel('so', [-5, 0, 15], 1.0, 2.7, { level: (D) => D.V('SOLT31') / 100, temp: 'SOTC31' });
@@ -548,19 +564,6 @@ export class Plant {
     this.inst('so', 'SOVS31', soV, { off: [0.6, 1.0, 0], name: 'SO-VS31' });
     this.eq('so', [-2.6, -0.1, 13.4], 'PUMP', 'SO-PU31');
     this.inst('so', 'SOTT31', [-2.6, Y, 6.5], { off: [1.1, 1.2, 0] });
-
-    // Lab Cooler 2 (V24): branch after SO-VF31 through WW-HX02, rejoining the supply leg
-    const lc2 = (D) => 0.35 * (nz(D.V('SOVF31')) > 5 ? 1 : 0);
-    this.pipe('so', [[-7.4, Y, 9.8], [-9.6, Y, 9.8], [-9.6, Y, 8], [-10.15, Y, 8]], { kind: 'water', r: 0.1, tA: 'SOTT32', flow: lc2 });
-    this.valve('so', [-8.6, Y, 9.8], 'x', { manual: true });
-    this.hx('so', [-11.5, Y, 8], 2.6, {
-      r: 0.55,
-      tube: { kind: 'water', dir: -1, tA: 'SOTT32', tB: (D) => nz(D.V('SOTT32')) - 3, flow: lc2 },
-      shell: { kind: 'water', dir: -1, tA: 'CWTC22', tB: 'CWTC23', flow: pct('CWGV21O', 0.8) },
-    });
-    this.eq('so', [-11.5, -0.1, 7.0], 'LAB COOLER 2', 'WW-HX02', () => 'branch flow not metered');
-    this.pipe('so', [[-12.85, Y, 8], [-13.4, Y, 8], [-13.4, Y, 7.0], [-8.2, Y, 7.0], [-8.2, 2.1, 7.0], [-6.6, 2.1, 7.0], [-6.6, Y, 7.0], [-2.65, Y, 7.0]],
-      { kind: 'water', r: 0.1, tA: (D) => nz(D.V('SOTT32')) - 3, tB: 'SOTT31', flow: lc2, bend: 0.35 });
 
     // ================= WARM WATER LOOP =================
     const wwF = lpm('WWVF41', 1.2, 30);
@@ -609,7 +612,7 @@ export class Plant {
     this.valve('hw', [1.6, Y, -8.2], 'x', { out: 'WWGV42O' });
     this.inst('hw', 'WWGV42O', [1.6, Y, -8.2], { off: [0, 1.3, -0.6], name: 'WW-GV42', fb: 'WWGV42', note: 'Make-up level control valve. Feedback reads 0 while commanded open.' });
 
-    // cooling water circuit: fans -> GV21 -> Lab Cooler 1 -> Lab Cooler 2 -> fans
+    // cooling water circuit: fans -> GV21 -> Lab Cooler 1 -> fans
     const cwF = pct('CWGV21O', 0.9);
     this.fanUnit('ww', [-13.4, 0, -16.8], [3.2, 1.3, 2.4], 2, (D) => (nz(D.V('CWGV21O')) / 100) * 3);
     this.eq('ww', [-13.4, 2.1, -16.8], 'DRY COOLER FANS', 'CW');
@@ -617,12 +620,9 @@ export class Plant {
     this.valve('ww', [-9.6, Y, -16.4], 'x', { out: 'CWGV21O' });
     this.inst('ww', 'CWGV21O', [-9.6, Y, -16.4], { off: [0, 1.3, 0.4], name: 'CW-GV21', fb: 'CWGV21' });
     this.inst('ww', 'CWTC21', [-7.8, Y, -16.4], { off: [0, 1.1, 0.4] });
-    this.pipe('ww', [[-4, Y, -14.65], [-4, Y, -18.8], [-16.2, Y, -18.8], [-16.2, Y, 9.9], [-10.6, Y, 9.9], [-10.6, Y, 8.5]],
+    this.pipe('ww', [[-4, Y, -14.65], [-4, Y, -18.8], [-13.4, Y, -18.8], [-13.4, Y, -18.05]],
       { kind: 'water', r: 0.11, tA: 'CWTC22', flow: cwF });
     this.inst('ww', 'CWTC22', [-4, Y, -16.8], { off: [1.1, 1.1, 0] });
-    this.pipe('ww', [[-12.4, Y, 8.5], [-12.4, Y, 9.3], [-15.6, Y, 9.3], [-15.6, Y, -16.6], [-15.05, Y, -16.6]],
-      { kind: 'water', r: 0.11, tA: 'CWTC23', flow: cwF });
-    this.inst('so', 'CWTC23', [-14.4, Y, 9.3], { off: [0, 1.1, 0.6], note: 'Assumed Lab Cooler 2 cooling-water return. HW-TC51 reports the same value.' });
 
     // ================= HOT WATER & STEAM =================
     const hwF = lpm('HWVF51', 1.4, 120);
@@ -667,36 +667,70 @@ export class Plant {
     this.frame.push((dt, t, D) => this.bubbles.update(dt, clamp(nz(D.V('STPT61')) / 0.5) * clamp(nz(D.V('HWVF51')) / 60), flash.level()));
   }
 
+  // Bitzer semi-hermetic 4-cylinder piston compressor (4NESP-20), painted Bitzer green.
+  // Axis along x: suction shut-off valve on the motor end (−x), crankcase with two cylinder
+  // banks in a V on the +x half, discharge valve on top between the heads.
   compressor(pos) {
     const [x, y, z] = pos;
     const body = new THREE.Group();
     body.position.set(x, y, z);
     this.add(body);
-    const L = 3;
-    const add = (geo, mat, p, r) => { const m = new THREE.Mesh(geo, mat); m.position.set(...p); if (r) m.rotation.set(...r); body.add(m); return m; };
-    add(new THREE.CylinderGeometry(0.75, 0.75, 1.05, 32), MAT.green, [-0.95, 0, 0], [0, 0, Math.PI / 2]);
-    add(new THREE.CylinderGeometry(0.75, 0.75, 1.05, 32), MAT.green, [0.95, 0, 0], [0, 0, Math.PI / 2]);
-    const win = add(new THREE.CylinderGeometry(0.74, 0.74, 0.85, 32, 1, true), MAT.glass, [0, 0, 0], [0, 0, Math.PI / 2]);
-    win.renderOrder = 3;
-    for (let i = 0; i < 6; i++) add(new THREE.TorusGeometry(0.77, 0.04, 6, 32), MAT.dark, [0.55 + i * 0.16, 0, 0], [0, Math.PI / 2, 0]);
-    add(new THREE.BoxGeometry(1.0, 0.45, 0.95), MAT.dark, [-0.9, 0.85, 0]);
-    add(new THREE.CylinderGeometry(0.82, 0.82, 0.1, 32), MAT.steel, [-L / 2, 0, 0], [0, 0, Math.PI / 2]);
-    add(new THREE.CylinderGeometry(0.82, 0.82, 0.1, 32), MAT.steel, [L / 2, 0, 0], [0, 0, Math.PI / 2]);
-    // rotor visible through the window
-    const rotor = new THREE.Group();
-    for (let i = 0; i < 3; i++) {
-      const lobe = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.1, 0.14), MAT.orange);
-      lobe.rotation.x = (i / 3) * Math.PI;
-      rotor.add(lobe);
+    const G = MAT.bitzer;
+    const add = (geo, mat, p, r, parent = body) => { const m = new THREE.Mesh(geo, mat); m.position.set(...p); if (r) m.rotation.set(...r); parent.add(m); return m; };
+    const cylX = (r, len, cx, mat, cy = 0, cz = 0) => add(new THREE.CylinderGeometry(r, r, len, 32), mat, [cx, cy, cz], [0, 0, Math.PI / 2]);
+
+    // motor housing with cast ribs
+    cylX(0.58, 1.4, -0.7, G);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      add(new THREE.BoxGeometry(1.2, 0.08, 0.07), G, [-0.7, Math.cos(a) * 0.6, Math.sin(a) * 0.6], [a, 0, 0]);
     }
-    rotor.add(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.0, 12), MAT.steel).rotateZ(Math.PI / 2));
-    body.add(rotor);
-    this.spin(rotor, 'x', (D) => nz(D.V('HPCO01_FREQUENCY')) / 70 * 3);
-    // running ring
-    const ring = add(new THREE.TorusGeometry(0.86, 0.05, 8, 40),
-      new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x33ff77, emissiveIntensity: 0 }), [-1.5 + 0.12, 0, 0], [0, Math.PI / 2, 0]);
-    // feet
-    this.mesh(new THREE.BoxGeometry(2.6, y - 0.6, 1.0), MAT.dark, [x, (y - 0.6) / 2, z]);
+    cylX(0.63, 0.09, -1.42, G);            // motor end cover
+    cylX(0.65, 0.07, 0.0, MAT.dark);       // flange to crankcase
+    // suction shut-off valve + spindle
+    cylX(0.2, 0.16, -1.52, MAT.steel);
+    add(new THREE.CylinderGeometry(0.07, 0.07, 0.3, 12), MAT.steel, [-1.52, 0.3, 0]);
+    add(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 6), MAT.dark, [-1.52, 0.47, 0]);
+    // terminal box on the motor housing
+    add(new THREE.BoxGeometry(0.72, 0.3, 0.6), G, [-0.75, 0.7, 0]);
+    add(new THREE.BoxGeometry(0.78, 0.05, 0.66), MAT.dark, [-0.75, 0.87, 0]);
+    add(new THREE.CylinderGeometry(0.07, 0.07, 0.16, 12), MAT.dark, [-1.05, 0.72, 0.36], [Math.PI / 2, 0, 0]);
+    const lamp = add(new THREE.SphereGeometry(0.06, 12, 8),
+      new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x33ff77, emissiveIntensity: 0 }), [-0.45, 0.92, 0.18]);
+    // name plate
+    add(new THREE.BoxGeometry(0.42, 0.24, 0.02), MAT.blade, [-0.7, -0.05, 0.6]);
+
+    // crankcase with oil sump, oil pump end cover and sight glass
+    add(new THREE.BoxGeometry(1.3, 0.9, 1.06), G, [0.65, -0.12, 0]);
+    cylX(0.57, 1.3, 0.65, G);
+    add(new THREE.BoxGeometry(1.2, 0.2, 1.12), G, [0.65, -0.52, 0]);
+    cylX(0.44, 0.14, 1.36, G);
+    cylX(0.2, 0.14, 1.48, MAT.dark);
+    add(new THREE.TorusGeometry(0.11, 0.025, 8, 20), MAT.dark, [0.55, -0.3, 0.535]);
+    add(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 20),
+      new THREE.MeshStandardMaterial({ color: 0xd9b04a, emissive: 0x6b4a10, emissiveIntensity: 0.7, roughness: 0.1 }),
+      [0.55, -0.3, 0.535], [Math.PI / 2, 0, 0]);
+
+    // two cylinder banks in a V; heads warm up with the discharge temperature
+    const headMat = G.clone();
+    for (const side of [-1, 1]) {
+      const bank = new THREE.Group();
+      bank.position.set(0.65, 0.3, 0);
+      bank.rotation.x = side * 0.72;
+      body.add(bank);
+      add(new THREE.BoxGeometry(1.12, 0.46, 0.5), G, [0, 0.3, 0], null, bank);
+      add(new THREE.BoxGeometry(1.22, 0.16, 0.6), headMat, [0, 0.6, 0], null, bank);
+      for (let i = 0; i < 6; i++) add(new THREE.BoxGeometry(0.05, 0.14, 0.6), headMat, [-0.5 + i * 0.2, 0.75, 0], null, bank);
+    }
+    // discharge manifold between the heads and discharge shut-off valve
+    add(new THREE.CylinderGeometry(0.075, 0.075, 1.0, 12), MAT.steel, [1.0, 1.02, 0], [Math.PI / 2, 0, 0]);
+    add(new THREE.BoxGeometry(0.26, 0.26, 0.26), MAT.steel, [1.0, 1.15, 0]);
+    add(new THREE.CylinderGeometry(0.06, 0.06, 0.25, 12), MAT.steel, [1.0, 1.4, 0]);
+    add(new THREE.CylinderGeometry(0.09, 0.09, 0.07, 6), MAT.dark, [1.0, 1.54, 0]);
+
+    // cast feet on a plinth
+    for (const fx of [-0.95, 0.7]) add(new THREE.BoxGeometry(0.32, 0.32, 1.25), G, [fx, -0.62, 0]);
+    this.mesh(new THREE.BoxGeometry(2.9, y - 0.78, 1.45), MAT.dark, [x, (y - 0.78) / 2, z]);
 
     let run = 0;
     this.frame.push((dt, t, D) => {
@@ -705,14 +739,19 @@ export class Plant {
       const a = 0.012 * run * (0.5 + hz / 140);
       body.position.set(x + Math.sin(t * 91) * a, y + Math.sin(t * 77 + 1) * a, z + Math.cos(t * 83) * a);
       const trip = nz(D.raw.HPCO01_TRIP_FLAGS) !== 0;
-      ring.material.emissive.setHex(trip ? 0xff3344 : 0x33ff77);
-      ring.material.emissiveIntensity = trip ? 1.5 : 0.1 + 1.5 * run;
+      lamp.material.emissive.setHex(trip ? 0xff3344 : 0x33ff77);
+      lamp.material.emissiveIntensity = trip ? 1.5 + Math.sin(t * 6) : 0.1 + 1.8 * run;
+    });
+    this.updaters.push((D) => {
+      const td = D.V('HPTT02');
+      headMat.emissive.setRGB(...tempRGB(td));
+      headMat.emissiveIntensity = Number.isFinite(td) ? clamp((td - 40) / 80) * 0.35 : 0;
     });
 
-    this.eq('hp', [x, -0.15, z + 1.25], 'COMPRESSOR', 'HP-CO01',
+    this.eq('hp', [x, -0.15, z + 1.25], 'COMPRESSOR', 'HP-CO01 · Bitzer 4NESP-20',
       (D) => `${fmt(D.V('HPCO01_FREQUENCY'), 1)} Hz · ${fmt(D.V('HPCO01_POWER'), 1)} kW`);
-    this.inst('hp', 'HPTC03', [x + 0.6, y + 0.75, z], { off: [0.5, 1.0, -0.4], note: 'Compressor body thermocouple' });
-    this.inst('hp', 'HPCO01_DISCHARGE_TEMPERATURE', [x + 1.5, y + 0.3, z], { off: [1.2, 1.5, 0.6], name: 'HP-CO01 T<sub>dis</sub>' });
+    this.inst('hp', 'HPTC03', [x - 0.3, y + 0.6, z + 0.4], { off: [-0.4, 1.3, -0.4], note: 'Compressor body thermocouple' });
+    this.inst('hp', 'HPCO01_DISCHARGE_TEMPERATURE', [x + 1.0, y + 1.6, z], { off: [0.6, 1.0, 0.6], name: 'HP-CO01 T<sub>dis</sub>' });
 
     // VSD cabinet
     const vx = x - 0.4, vz = z + 1.9;

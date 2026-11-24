@@ -1,5 +1,8 @@
 // InfluxDB 2.x access straight from the browser (the server allows CORS).
-import { TAGS, derived } from './tags.js';
+import { TAGS, MODBUS, MODBUS_TAG, modbusFilter, derived } from './tags.js';
+
+// raw Modbus registers are unsigned 16-bit; the PHNIX values are signed
+const s16 = (v) => (v >= 32768 && v < 65536 ? v - 65536 : v);
 
 function splitCSV(line) {
   const out = [];
@@ -72,14 +75,20 @@ export class DataStore {
   }
 
   async poll() {
-    const flux = `from(bucket: "${this.cfg.bucket}")
+    const plc = `from(bucket: "${this.cfg.bucket}")
   |> range(start: -7d)
   |> filter(fn: (r) => r._field == "value" and r.topic =~ /^(PLC|PLC_BOOL)\\//)
   |> last()
   |> keep(columns: ["_time", "_value", "topic"])`;
-    try {
-      const rows = await this.query(flux);
-      for (const r of rows) {
+    const mb = `from(bucket: "${this.cfg.bucket}")
+  |> range(start: -1d)
+  |> filter(fn: (r) => r._measurement == "mqtt_consumer" and (${modbusFilter(Object.keys(MODBUS))}))
+  |> last()
+  |> keep(columns: ["_time", "_value", "topic", "_field"])`;
+    // the PHNIX registers are optional: a failure there must not take the PLC view down
+    const [res, mbRes] = await Promise.allSettled([this.query(plc), this.query(mb)]);
+    if (res.status === 'fulfilled') {
+      for (const r of res.value) {
         if (!r.topic) continue;
         const tag = r.topic.split('/')[1];
         const v = r._value;
@@ -90,30 +99,49 @@ export class DataStore {
       }
       this.status = Date.now() - this.latest > this.cfg.staleSec * 1000 ? 'stale' : 'live';
       this.error = '';
-    } catch (e) {
+    } else {
       this.status = 'error';
-      this.error = e.message;
+      this.error = res.reason.message;
     }
+    if (mbRes.status === 'fulfilled') {
+      for (const r of mbRes.value) {
+        const tag = r.topic && MODBUS_TAG[`${r.topic.split('/')[2]}/${r._field}`];
+        if (!tag) continue;
+        this.raw[tag] = s16(Number(r._value));
+        this.time[tag] = parseTime(r._time);
+      }
+    } else console.warn('PHNIX query failed', mbRes.reason);
     this.X = derived(this.V);
     this.emit();
   }
 
   async pollTrends(tags) {
-    const re = tags.join('|');
     const every = Math.max(10, Math.round(this.cfg.trendMinutes * 60 / 120));
-    const flux = `from(bucket: "${this.cfg.bucket}")
+    const plcTags = tags.filter((t) => !MODBUS[t]), mbTags = tags.filter((t) => MODBUS[t]);
+    const q = [];
+    if (plcTags.length) q.push(`from(bucket: "${this.cfg.bucket}")
   |> range(start: -${this.cfg.trendMinutes}m)
-  |> filter(fn: (r) => r._field == "value" and r._measurement == "mqtt_consumer" and r.topic =~ /^PLC\\/(${re})$/)
+  |> filter(fn: (r) => r._field == "value" and r._measurement == "mqtt_consumer" and r.topic =~ /^PLC\\/(${plcTags.join('|')})$/)
   |> toFloat()
   |> aggregateWindow(every: ${every}s, fn: mean, createEmpty: false)
-  |> keep(columns: ["_time", "_value", "topic"])`;
+  |> keep(columns: ["_time", "_value", "topic"])`);
+    if (mbTags.length) q.push(`from(bucket: "${this.cfg.bucket}")
+  |> range(start: -${this.cfg.trendMinutes}m)
+  |> filter(fn: (r) => r._measurement == "mqtt_consumer" and (${modbusFilter(mbTags)}))
+  |> toFloat()
+  |> filter(fn: (r) => r._value != 32767.0)
+  |> map(fn: (r) => ({ r with _value: if r._value >= 32768.0 then r._value - 65536.0 else r._value }))
+  |> aggregateWindow(every: ${every}s, fn: mean, createEmpty: false)
+  |> keep(columns: ["_time", "_value", "topic", "_field"])`);
     try {
-      const rows = await this.query(flux);
+      const results = await Promise.all(q.map((f) => this.query(f)));
       const tr = {};
-      for (const r of rows) {
-        if (!r.topic) continue;
-        const tag = r.topic.split('/')[1];
-        (tr[tag] ||= []).push([parseTime(r._time), Number(r._value)]);
+      for (const rows of results) {
+        for (const r of rows) {
+          if (!r.topic) continue;
+          const tag = r.topic.startsWith('PLC/') ? r.topic.split('/')[1] : MODBUS_TAG[`${r.topic.split('/')[2]}/${r._field}`];
+          if (tag) (tr[tag] ||= []).push([parseTime(r._time), Number(r._value)]);
+        }
       }
       this.trend = tr;
     } catch (e) {

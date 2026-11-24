@@ -46,21 +46,45 @@ const grid = new THREE.GridHelper(120, 120, 0x1c2433, 0x141a26);
 grid.position.y = 0.005;
 scene.add(grid);
 
+const topBar = document.getElementById('top');
+const panelEl = document.getElementById('panel');
+let sheetPeek = 0; // height of the collapsed bottom sheet on phones
+
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   renderer.setSize(w, h);
   labels.setSize(w, h);
-  camera.aspect = w / h;
-  // keep the whole plant in shot on narrow screens
-  camera.fov = w / h < 1 ? 58 : 40;
-  // centre the scene in the space left of the side panel
-  const panelW = w > 820 && !document.body.classList.contains('panel-hidden') ? 330 : 0;
-  if (panelW) {
-    camera.aspect = (w + panelW) / h; // full (virtual) frustum is wider; we show its left part
-    camera.setViewOffset(w + panelW, h, panelW, 0, w, h);
-  } else camera.clearViewOffset();
+  // Centre the scene in the part of the screen the overlays leave free: left of the side
+  // panel on desktop; between the header and the collapsed bottom sheet on phones.
+  const narrow = w <= 820;
+  const r = !narrow && !document.body.classList.contains('panel-hidden') ? 330 : 0;
+  const t = narrow ? topBar.offsetHeight : 0, b = narrow ? sheetPeek : 0;
+  const dx = -r, dy = t - b;
+  const W = w + Math.abs(dx), H = h + Math.abs(dy);
+  // keep the whole plant in shot on narrow screens; widen the fov with the virtual frustum
+  // so the zoom stays the same and only the centre moves
+  const fov = w / h < 1 ? 58 : 40;
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(fov / 2)) * H / h));
+  camera.aspect = W / H;
+  if (dx || dy) camera.setViewOffset(W, H, dx < 0 ? -dx : 0, dy < 0 ? -dy : 0, w, h);
+  else camera.clearViewOffset();
   camera.updateProjectionMatrix();
 }
+// alarm column starts below the header, which wraps on narrow screens
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--top', `${topBar.offsetHeight + 8}px`);
+  resize();
+}).observe(topBar);
+// only the collapsed sheet moves the scene, so opening it doesn't make the plant jump
+new ResizeObserver(() => {
+  if (document.body.classList.contains('sheet-open') || innerWidth > 820) return;
+  const ph = panelEl.offsetHeight;
+  if (Math.abs(ph - sheetPeek) > 2) {
+    sheetPeek = ph;
+    document.documentElement.style.setProperty('--sheet', `${ph}px`);
+    resize();
+  }
+}).observe(panelEl);
 new MutationObserver(resize).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 window.addEventListener('resize', resize);
 resize();

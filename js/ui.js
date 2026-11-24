@@ -1,5 +1,7 @@
 import { fmt, tagLabel, TAGS, cssTemp } from './tags.js';
+import { TRIPS, OVERRIDES, decode, startupState } from './flags.js';
 
+const hex = (w) => `0x${Number(w).toString(16).toUpperCase().padStart(4, '0')}`;
 const K = (label, fn, unit, dp = 1, hint = '') => ({ label, fn, unit, dp, hint });
 
 export const VIEWS = [
@@ -46,7 +48,7 @@ export const VIEWS = [
     id: 'so', key: '3', name: 'Source loop', sys: 'so',
     cam: { pos: [-6.5, 13.5, 27], tgt: [-6.5, 0, 10.5] },
     title: 'Source loop',
-    desc: 'Water from hold-up tank SO-ST01 is pumped through the evaporator. The PHNIX propane heat pump (EX-SP01) puts the heat back. Lab Cooler 2 (WW-HX02, added in P&ID V24) can bleed heat to the dry-cooler circuit.',
+    desc: 'Water from hold-up tank SO-ST01 is pumped through the evaporator. The PHNIX propane heat pump SO-HP31 puts the heat back through plate exchanger EX-SP01.',
     kpis: [
       K('Flow', (D) => D.V('SOVF31'), 'L/min'),
       K('Evaporator duty', (D) => D.X.qEvap, 'kW'),
@@ -56,14 +58,36 @@ export const VIEWS = [
       K('Tank temperature', (D) => D.V('SOTC31'), '°C'),
       K('Pump VSD', (D) => D.V('SOVS31'), '%', 0),
       K('Loop pressure', (D) => D.V('SOPT31'), 'bar g', 2),
+      K('PHNIX compressors', (D) => [D.V('PX_C1HZ'), D.V('PX_C2HZ')], 'Hz', 0),
     ],
     trends: ['SOTT31', 'SOTT32', 'SOTT33', 'SOVF31', 'SOLT31'],
+  },
+  {
+    id: 'px', key: '6', name: 'Propane HP', sys: 'so',
+    cam: { pos: [-9.5, 8.5, 23.5], tgt: [-12.2, 1.2, 11.6] },
+    title: 'PHNIX propane heat pump SO-HP31',
+    desc: 'Air-source R290 heat pump with two inverter compressors. It heats its own water circuit, which warms the source loop through plate exchanger EX-SP01. Values come from its Modbus registers: the controller (device 0) and the two inverter boards (devices 3 and 4).',
+    kpis: [
+      K('Mode', (D) => D.X.pxMode, '', 0, 'Controller register 2012: 1 heating, 250 defrost'),
+      K('Compressor 1 / 2', (D) => [D.V('PX_C1HZ'), D.V('PX_C2HZ')], 'Hz', 0, 'Inverter boards, register 2102'),
+      K('Commanded 1 / 2', (D) => [D.V('PX_C1CMD'), D.V('PX_C2CMD')], 'Hz', 0),
+      K('Input current 1 / 2', (D) => [D.V('PX_C1A'), D.V('PX_C2A')], 'A'),
+      K('Apparent input', (D) => D.X.pxKVA, 'kVA', 1, '√3 · V · I for both inverter boards. No power factor is logged, so this is not kW.'),
+      K('Water out / in', (D) => [D.V('PX_TOUT'), D.V('PX_TIN')], '°C'),
+      K('Set point', (D) => D.V('PX_SET'), '°C'),
+      K('Outdoor air / coil', (D) => [D.V('PX_TAMB'), D.V('PX_TCOIL')], '°C'),
+      K('Discharge 1 / 2', (D) => [D.V('PX_TDIS1'), D.V('PX_TDIS2')], '°C'),
+      K('Low pressure 1 / 2', (D) => [D.V('PX_PLO1'), D.V('PX_PLO2')], 'bar g'),
+      K('Inverter module 1 / 2', (D) => [D.V('PX_C1TM'), D.V('PX_C2TM')], '°C', 0, 'Register 2110, probably the power module temperature'),
+      K('Heat into source loop', (D) => D.X.qProp, 'kW', 1, 'EX-SP01 duty from SO-VF31 and SO-TT32 → SO-TT33'),
+    ],
+    trends: ['PX_C1HZ', 'PX_C2HZ', 'PX_TOUT', 'PX_TIN', 'PX_TAMB', 'PX_C1A'],
   },
   {
     id: 'ww', key: '4', name: 'Warm water', sys: 'ww',
     cam: { pos: [-6.5, 20, 7], tgt: [-6.5, 0, -10.5] },
     title: 'Warm water & cooling',
-    desc: 'The subcooler heats the warm-water loop. Mixing valve WW-GV41 sends part of the flow through Lab Cooler 1 to hold the pump inlet temperature, and WW-GV42 feeds make-up water to the flash tank. The dry-cooler fans then serve Lab Cooler 1 and Lab Cooler 2 in series.',
+    desc: 'The subcooler heats the warm-water loop. Mixing valve WW-GV41 sends part of the flow through Lab Cooler 1 to hold the pump inlet temperature, and WW-GV42 feeds make-up water to the flash tank. The dry-cooler fans cool Lab Cooler 1 through valve CW-GV21.',
     kpis: [
       K('Flow', (D) => D.V('WWVF41'), 'L/min'),
       K('Subcooler duty', (D) => D.X.qSub, 'kW'),
@@ -115,6 +139,9 @@ export class UI {
     $('#present').onclick = () => handlers.togglePresent();
     $('#labels').onclick = () => this.cycleLabels();
     $('#panel-toggle').onclick = () => document.body.classList.toggle('panel-hidden');
+    this.sheet();
+    // phones show alarms as one line; tap one for its description
+    $('#alarms').addEventListener('click', (e) => e.target.closest('#alarms > div')?.classList.toggle('open'));
     $('#fullscreen').onclick = () => {
       if (document.fullscreenElement) document.exitFullscreen();
       else document.documentElement.requestFullscreen?.();
@@ -131,6 +158,31 @@ export class UI {
     });
     this.labelMode = 0;
     setInterval(() => this.clock(), 1000);
+  }
+
+  // Phones: the side panel becomes a bottom sheet. Collapsed, it shows the view title and a
+  // strip of KPIs; tap or swipe the head to open the description, trends and legend.
+  sheet() {
+    const body = document.body, head = $('#sheet-head'), panel = $('#panel'), legend = $('#legend');
+    if (!head) return; // stale cached index.html
+    const mq = matchMedia('(max-width: 820px)');
+    const place = () => {
+      if (mq.matches) panel.appendChild(legend);
+      else { body.appendChild(legend); body.classList.remove('sheet-open'); }
+    };
+    mq.addEventListener('change', place);
+    place();
+    let y0 = null;
+    head.addEventListener('pointerdown', (e) => { y0 = e.clientY; });
+    head.addEventListener('pointercancel', () => { y0 = null; });
+    head.addEventListener('pointerup', (e) => {
+      if (y0 === null || !mq.matches) return;
+      const dy = e.clientY - y0;
+      y0 = null;
+      const open = body.classList.contains('sheet-open');
+      body.classList.toggle('sheet-open', Math.abs(dy) < 12 ? !open : dy < 0);
+      if (body.classList.contains('sheet-open')) panel.scrollTop = 0;
+    });
   }
 
   cycleLabels() {
@@ -171,8 +223,9 @@ export class UI {
 
   setPresent(on) {
     $('#present').classList.toggle('on', on);
-    $('#present').innerHTML = on ? '❚❚ Presenting' : '▶ Present';
+    $('#present').innerHTML = on ? '❚❚<span> Presenting</span>' : '▶<span> Present</span>';
     document.body.classList.toggle('presenting', on);
+    if (on) document.body.classList.remove('sheet-open');
   }
   setProgress(f) { $('#progress i').style.width = `${(f * 100).toFixed(2)}%`; }
 
@@ -195,7 +248,8 @@ export class UI {
     if (!this.kpiEls) return;
     this.view.kpis.forEach((kp, i) => {
       const v = kp.fn(D);
-      this.kpiEls[i].textContent = Array.isArray(v) ? v.map((x) => fmt(x, kp.dp)).join(' / ') : fmt(v, kp.dp);
+      this.kpiEls[i].textContent = typeof v === 'string' ? v
+        : Array.isArray(v) ? v.map((x) => fmt(x, kp.dp)).join(' / ') : fmt(v, kp.dp);
     });
     for (const t of this.trendEls) this.drawTrend(t);
     this.alarms();
@@ -248,9 +302,47 @@ export class UI {
     if (D.status === 'stale') a.push(['warn', `No new PLC data since ${new Date(D.latest).toLocaleString()}`]);
     // baseline reading is ~1 (raw counts); alarm only on a clear rise
     if (D.V('HPGD01') > 20) a.push(['err', `Gas detector HP-GD01 reading ${D.V('HPGD01')}`]);
-    if (D.raw.HPCO01_TRIP_FLAGS) a.push(['err', `Compressor trip flags 0x${D.raw.HPCO01_TRIP_FLAGS.toString(16)}`]);
+    if (D.raw.HPCO01_TRIP_FLAGS) {
+      for (const f of decode(D.raw.HPCO01_TRIP_FLAGS, TRIPS, 'Trip')) a.push(['err', `Trip: ${f.label}`, f.desc, f.alias]);
+    }
     if (D.B('SHUTDOWN_STARTED')) a.push(['warn', 'Shutdown sequence in progress']);
-    if (D.raw.OVERRIDE_FLAGS) a.push(['warn', `PLC overrides active (0x${D.raw.OVERRIDE_FLAGS.toString(16)})`]);
-    $('#alarms').innerHTML = a.map(([c, t]) => `<div class="${c}">${t}</div>`).join('');
+    if (D.V('PX_MODE') === 250) a.push(['warn', 'PHNIX defrosting', 'Controller mode 250: the source heat pump is reversing to melt ice off its coil']);
+    for (const n of [1, 2]) {
+      const w = D.raw[`PX_C${n}FLT`];
+      if (w) a.push(['warn', `PHNIX inverter ${n} protection word ${hex(w & 0xffff)}`, 'Register 2100; the bit meanings are not documented']);
+    }
+    if (D.raw.OVERRIDE_FLAGS) {
+      for (const f of decode(D.raw.OVERRIDE_FLAGS, OVERRIDES, 'Override')) a.push(['warn', `Override: ${f.label}`, f.desc, f.alias]);
+    }
+    const html = a.map(([c, t, d, alias]) => `<div class="${c}"${alias ? ` title="${alias}"` : ''}>${t}${d ? `<small>${d}</small>` : ''}</div>`).join('');
+    if (html !== this._alarmHtml) $('#alarms').innerHTML = this._alarmHtml = html;
+    this.startup();
+  }
+
+  // Startup permissives: only meaningful while the compressor is off
+  startup() {
+    const D = this.D;
+    const el = $('#startup');
+    if (!el) return; // stale cached index.html
+    const show = D.raw.HPCO01_ON === false && D.raw.STARTUP_FLAGS !== undefined && D.status !== 'error';
+    el.hidden = !show;
+    if (!show) return;
+    if (!this._startupInit) {
+      this._startupInit = true;
+      if (innerWidth <= 820) el.open = false;
+      el.addEventListener('toggle', () => { if (el.open) el.scrollIntoView({ block: 'nearest' }); });
+    }
+    const rows = startupState(D.raw.STARTUP_FLAGS);
+    const used = rows.filter((r) => !r.unused);
+    const met = used.filter((r) => r.met).length;
+    const ok = met === used.length;
+    const sum = el.querySelector('summary');
+    sum.className = ok ? 'ok' : 'wait';
+    sum.innerHTML = `Startup conditions <b>${met}/${used.length}</b><span>${ok ? 'ready to start' : 'heat pump off'}</span>`;
+    const list = rows.map((r) => `<li class="${r.unused ? 'unused' : r.met ? 'met' : 'unmet'}" title="${r.alias} (bit ${r.bit})${r.note ? ` · ${r.note}` : ''}">`
+      + `<i>${r.unused ? '–' : r.met ? '✓' : '✗'}</i>${r.label}</li>`).join('');
+    const html = list + `<li class="raw">STARTUP_FLAGS ${hex(D.raw.STARTUP_FLAGS)} · ✓ met · ✗ not met · – not used</li>`;
+    const ul = el.querySelector('ul');
+    if (html !== this._startupHtml) ul.innerHTML = this._startupHtml = html;
   }
 }

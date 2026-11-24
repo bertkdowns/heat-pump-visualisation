@@ -26,7 +26,7 @@
     </div>
     <nav id="views"></nav>
     <div class="tools">
-      <button id="present" title="Presentation mode (P)">▶ Present</button>
+      <button id="present" title="Presentation mode (P)">▶<span> Present</span></button>
       <button id="labels" title="Label mode (L)">Labels: all</button>
       <button id="panel-toggle" title="Show or hide the side panel">Panel</button>
       <button id="fullscreen" title="Fullscreen (F)">⛶</button>
@@ -38,14 +38,23 @@
   </header>
 
   <aside id="panel">
-    <h2 id="p-title"></h2>
+    <div id="sheet-head" title="Tap or swipe to show or hide details">
+      <i class="grab"></i>
+      <h2 id="p-title"></h2>
+    </div>
     <p id="p-desc"></p>
     <div id="kpis"></div>
     <h3 id="trend-h">Trends</h3>
     <div id="trends"></div>
   </aside>
 
-  <div id="alarms"></div>
+  <div id="left">
+    <div id="alarms"></div>
+    <details id="startup" open hidden>
+      <summary></summary>
+      <ul></ul>
+    </details>
+  </div>
 
   <dialog id="connect">
     <form method="dialog">
@@ -70,7 +79,7 @@
       <span><i class="sw steam"></i>Steam</span>
       <span><i class="sw sig"></i>Control loop</span>
     </div>
-    <div class="hint">Drag to orbit · scroll to zoom · 1–5 views · P present · L labels</div>
+    <div class="hint">Drag to orbit · scroll to zoom · 1–6 views · P present · L labels</div>
   </footer>
 
   <script type="module" src="js/main.js"></script>
