@@ -598,7 +598,8 @@ export class Plant {
     this.inst('ww', 'WWTT43', [-7, Y, -13.1], { off: [-1.3, 1.1, 0] });
     this.pipe('ww', [[-10.5, Y, -12], [-7.1, Y, -12]], { kind: 'water', r: 0.07, tA: 15, flow: () => 0 });
     this.eq('ww', [-10.6, 0.3, -12], 'FRESH WATER', 'FW');
-    this.inst('ww', 'WWTC41', [-7, Y, -11.1], { off: [-1.3, 1.0, 0] });
+    // WW-TC41 is not in use (reads −32768, sensor fault), so it isn't drawn
+    // this.inst('ww', 'WWTC41', [-7, Y, -11.1], { off: [-1.3, 1.0, 0] });
     // bypass + mixing valve
     this.pipe('ww', [[-3, Y, -10], [-7, Y, -10]], { kind: 'water', r: 0.12, tA: 'WWTT42', flow: (D) => wwF(D) * (1 - coolFrac(D)) });
     this.valve('ww', [-5, Y, -10], 'x', { manual: true });
@@ -751,7 +752,8 @@ export class Plant {
     this.eq('hp', [x, -0.15, z + 1.25], 'COMPRESSOR', 'HP-CO01 · Bitzer 4NESP-20',
       (D) => `${fmt(D.V('HPCO01_FREQUENCY'), 1)} Hz · ${fmt(D.V('HPCO01_POWER'), 1)} kW`);
     this.inst('hp', 'HPTC03', [x - 0.3, y + 0.6, z + 0.4], { off: [-0.4, 1.3, -0.4], note: 'Compressor body thermocouple' });
-    this.inst('hp', 'HPCO01_DISCHARGE_TEMPERATURE', [x + 1.0, y + 1.6, z], { off: [0.6, 1.0, 0.6], name: 'HP-CO01 T<sub>dis</sub>' });
+    // Drive discharge-temperature sensor is unplugged (reads 200 °C). Uncomment once rewired.
+    // this.inst('hp', 'HPCO01_DISCHARGE_TEMPERATURE', [x + 1.0, y + 1.6, z], { off: [0.6, 1.0, 0.6], name: 'HP-CO01 T<sub>dis</sub>' });
 
     // VSD cabinet
     const vx = x - 0.4, vz = z + 1.9;
