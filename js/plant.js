@@ -502,7 +502,8 @@ export class Plant {
     // IHX branch (liquid through the IHX section of the evaporator)
     this.pipe('hp', [[-9, Y, -3], [-9, Y, -1], [-3, Y, -1], [-3, Y, 4.15]], { kind: 'liq', r: 0.08, tA: 'HPTT04', flow: mf(LIQ * 0.6) });
     this.pipe('hp', [[-4.2, Y, 4.15], [-4.2, Y, -0.2], [-10, Y, -0.2], [-10, Y, -3]], { kind: 'liq', r: 0.08, tA: 'HPTT04', tB: 'HPTT05', flow: mf(LIQ * 0.6) });
-    this.inst('hp', 'HPTC02', [-6.5, Y, -1], { off: [0, 0.9, 0], note: 'IHX liquid line (reads fault)' });
+    // HP-TC02 (IHX liquid line) isn't fitted on the rig and only ever reports −32768, so it isn't drawn
+    // this.inst('hp', 'HPTC02', [-6.5, Y, -1], { off: [0, 0.9, 0], note: 'IHX liquid line (reads fault)' });
     this.valve('hp', [-4.2, Y, 1.6], 'z', { manual: true });
 
     this.hx('hp', [-5, Y, 5], 6, {

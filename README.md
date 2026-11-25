@@ -122,7 +122,7 @@ only serves Lab Cooler 1.
   calculations use HP-PT01.
 - **WW-GV42 feedback stays 0** while its output moves, and **ST-GV61 / CW-GV21 feedback
   reads above 100 %**, so animation uses the PLC output (`…O`) tags.
-- HP-TC02 and WW-TC41 report −32768 (sensor fault). WW-TC41 is not in use and is not drawn.
+- HP-TC02 and WW-TC41 report −32768 (sensor fault). Neither is in use, so neither is drawn.
 - HPCO01_DISCHARGE_TEMPERATURE (the drive's discharge sensor) is unplugged for now and
   reads 200 °C, so its label is commented out in `js/plant.js`. Put it back once rewired.
 
