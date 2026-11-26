@@ -139,9 +139,17 @@ function step(dir) {
 labels.domElement.addEventListener('pointerdown', () => { if (presenting) setPresent(false); tween = null; });
 labels.domElement.addEventListener('wheel', () => { if (presenting) setPresent(false); tween = null; }, { passive: true });
 
-const ui = new UI(D, CONFIG, { select, togglePresent: () => setPresent(!presenting), step });
+// ?start=…&speed=… opens in historical replay
+if (Number.isFinite(CONFIG.start)) D.setReplay(CONFIG.start, CONFIG.speed > 0 ? CONFIG.speed : 1);
+// fetch straight away after switching between live and replay
+const kick = () => {
+  if (!CONFIG.token) return;
+  D.poll();
+  D.pollTrends(TREND_TAGS).then(() => ui.refresh());
+};
+const ui = new UI(D, CONFIG, { select, togglePresent: () => setPresent(!presenting), step, kick });
 document.body.dataset.labels = 'all';
-select('overview');
+select(CONFIG.view || 'overview');
 
 // ---------------------------------------------------------------- data loop
 D.on(() => { plant.onData(D); ui.refresh(); });
@@ -157,7 +165,8 @@ async function trendLoop() {
     await D.pollTrends(TREND_TAGS);
     ui.refresh();
   }
-  setTimeout(trendLoop, CONFIG.trendMs);
+  // replay moves faster than real time, so sparklines refresh more often
+  setTimeout(trendLoop, D.replay && !D.replay.paused ? Math.max(3000, CONFIG.trendMs / D.replay.speed) : CONFIG.trendMs);
 }
 
 // token entry: never stored in the repo, only in this browser

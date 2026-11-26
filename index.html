@@ -30,9 +30,17 @@
       <button id="labels" title="Label mode (L)">Labels: all</button>
       <button id="panel-toggle" title="Show or hide the side panel">Panel</button>
       <button id="fullscreen" title="Fullscreen (F)">⛶</button>
-      <button id="token-btn" title="Change InfluxDB token">🔑</button>
       <span id="status" class="pill">CONNECTING</span>
       <span id="clock"></span>
+      <div id="menu-wrap">
+        <button id="menu-btn" title="More options" aria-haspopup="menu" aria-expanded="false">⋮</button>
+        <div id="menu" role="menu" hidden>
+          <button role="menuitem" id="share-btn"><i>🔗</i>Share link…</button>
+          <button role="menuitem" id="replay-btn"><i>⏪</i>Historical replay…</button>
+          <button role="menuitem" id="live-btn" hidden><i>●</i>Back to live</button>
+          <button role="menuitem" id="token-btn"><i>🔑</i>Change InfluxDB token</button>
+        </div>
+      </div>
     </div>
     <div id="progress"><i></i></div>
   </header>
@@ -49,6 +57,7 @@
   </aside>
 
   <div id="left">
+    <div id="replaybar" hidden></div>
     <div id="alarms"></div>
     <details id="startup" open hidden>
       <summary></summary>
@@ -64,6 +73,45 @@
       <input id="token-input" type="password" autocomplete="off" placeholder="InfluxDB API token" required>
       <p id="connect-err" class="err"></p>
       <menu><button value="ok" class="primary">Connect</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="share" class="modal">
+    <form method="dialog">
+      <h2>Share this view</h2>
+      <label class="chk"><input type="checkbox" id="share-token" checked>
+        <span>Include the access token<small>Anyone with the link can read the plant data without entering a token.</small></span></label>
+      <label class="chk"><input type="checkbox" id="share-view" checked><span>Open on <b id="share-view-name"></b></span></label>
+      <label class="chk" id="share-time-row"><input type="checkbox" id="share-time" checked>
+        <span>Start the replay at <b id="share-time-text"></b></span></label>
+      <div class="copyrow"><input id="share-url" readonly aria-label="Link"><button type="button" id="share-copy" class="primary">Copy</button></div>
+      <p id="share-msg" class="note"></p>
+      <menu><button type="button" id="share-native" hidden>Share…</button><button value="close">Close</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="replay" class="modal">
+    <form method="dialog">
+      <h2>Historical replay</h2>
+      <p>Play back the logged data from a chosen time as if it were live.</p>
+      <label class="field">Start time (your local time)
+        <input type="datetime-local" id="replay-start" step="1" required></label>
+      <div class="field">Speed
+        <div class="seg" id="replay-speed">
+          <label><input type="radio" name="speed" value="1" checked><span>1×</span></label>
+          <label><input type="radio" name="speed" value="5"><span>5×</span></label>
+          <label><input type="radio" name="speed" value="10"><span>10×</span></label>
+          <label><input type="radio" name="speed" value="30"><span>30×</span></label>
+          <label><input type="radio" name="speed" value="60"><span>60×</span></label>
+        </div>
+      </div>
+      <p class="note">The start time and speed go into the page address (<code>?start=…&amp;speed=…</code>),
+        so a copied link starts at the same point. Replay switches back to live when it catches up.</p>
+      <menu>
+        <button value="cancel" formnovalidate>Cancel</button>
+        <button value="live" id="replay-live" formnovalidate hidden>Back to live</button>
+        <button value="start" class="primary">Start replay</button>
+      </menu>
     </form>
   </dialog>
 

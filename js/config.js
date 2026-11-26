@@ -31,6 +31,10 @@ export const CONFIG = {
   trendMinutes: Number(p.get('trend') || 60), // sparkline window
   cycleSec: Number(p.get('cycle') || 60),     // presentation dwell per view
   present: p.has('present'),
+  view: p.get('view') || '',                  // view to open on, e.g. ?view=hp
+  // historical replay: ?start=2026-11-23T20:50:00Z&speed=10 (start may also be local time)
+  start: p.get('start') ? Date.parse(p.get('start')) : NaN,
+  speed: Number(p.get('speed') || 1),
   staleSec: 30,
   tMin: 0,     // temperature colour scale (°C)
   tMax: 150,

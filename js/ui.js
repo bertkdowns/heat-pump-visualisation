@@ -1,6 +1,11 @@
 import { fmt, tagLabel, TAGS, cssTemp } from './tags.js';
 import { TRIPS, OVERRIDES, decode, startupState } from './flags.js';
 
+const isoSec = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+// value for <input type="datetime-local"> in the browser's time zone
+const localInput = (ms) => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 19); };
+const fmtWhen = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const SPEEDS = [1, 5, 10, 30, 60];
 const hex = (w) => `0x${Number(w).toString(16).toUpperCase().padStart(4, '0')}`;
 const K = (label, fn, unit, dp = 1, hint = '') => ({ label, fn, unit, dp, hint });
 
@@ -37,6 +42,7 @@ export const VIEWS = [
       K('Temperature lift', (D) => D.X.lift, 'K'),
       K('Superheat PLC / calc', (D) => [D.V('HPEV01_Superheat'), D.X.shCalc], 'K'),
       K('Subcooling', (D) => D.X.subcool, 'K', 1, 'Tsat(HP-PT03) − HP-TT04'),
+      K('IHX duty', (D) => D.X.qIHX, 'kW', 2, 'Liquid side: HP-MF01 × (h(HP-TT04) − h(HP-TT05)), liquid n-butane at HP-PT03'),
       K('EEV opening', (D) => D.V('HPEV01'), '%'),
       K('COP / Carnot', (D) => [D.X.cop, D.X.copCarnot], '', 2),
       K('2nd-law efficiency', (D) => D.X.eta, '%', 0),
@@ -157,7 +163,139 @@ export class UI {
       if (e.key === 'ArrowLeft') handlers.step(-1);
     });
     this.labelMode = 0;
+    this.menu();
+    this.shareDialog();
+    this.replayDialog();
+    D.onReplay((r) => this.syncReplay(r));
+    this.syncReplay(D.replay);
     setInterval(() => this.clock(), 1000);
+  }
+
+  // ------------------------------------------------------------ ⋮ menu
+  menu() {
+    const btn = $('#menu-btn'), m = $('#menu');
+    if (!btn) return; // stale cached index.html
+    const close = () => { m.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      m.hidden = !m.hidden;
+      btn.setAttribute('aria-expanded', String(!m.hidden));
+      if (!m.hidden) m.querySelector('button:not([hidden])')?.focus();
+    };
+    m.addEventListener('click', close);
+    document.addEventListener('click', (e) => { if (!m.hidden && !m.contains(e.target)) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !m.hidden) { close(); btn.focus(); } });
+    $('#live-btn').onclick = () => this.goLive();
+  }
+
+  // ------------------------------------------------------------ share link
+  shareDialog() {
+    const dlg = $('#share');
+    if (!dlg) return;
+    const url = $('#share-url'), msg = $('#share-msg');
+    const update = () => { url.value = this.shareUrl(); msg.textContent = ''; msg.className = 'note'; };
+    ['#share-token', '#share-view', '#share-time'].forEach((s) => { $(s).onchange = update; });
+    $('#share-btn').onclick = () => {
+      const tok = $('#share-token');
+      tok.disabled = !this.cfg.token;
+      if (!this.cfg.token) tok.checked = false;
+      $('#share-view-name').textContent = this.view.name;
+      $('#share-view').closest('label').hidden = this.view.id === 'overview';
+      $('#share-time-row').hidden = !this.D.replay;
+      if (this.D.replay) $('#share-time-text').textContent = `${fmtWhen(this.D.now())} (${this.D.replay.speed}×)`;
+      update();
+      $('#share-native').hidden = !navigator.share;
+      dlg.showModal();
+      url.select();
+    };
+    $('#share-copy').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(url.value);
+      } catch {
+        url.select();
+        document.execCommand?.('copy');
+      }
+      msg.textContent = $('#share-token').checked ? 'Copied. The link contains the access token, so only send it to people who should see the data.' : 'Copied.';
+      msg.className = 'note ok';
+    };
+    $('#share-native').onclick = () => navigator.share?.({ title: document.title, url: url.value }).catch(() => {});
+  }
+
+  shareUrl() {
+    const p = new URLSearchParams(location.search);
+    for (const k of ['token', 'start', 'speed', 'view']) p.delete(k);
+    if ($('#share-view').checked && this.view.id !== 'overview') p.set('view', this.view.id);
+    if (this.D.replay && $('#share-time').checked) {
+      p.set('start', isoSec(this.D.now()));
+      p.set('speed', String(this.D.replay.speed));
+    }
+    if ($('#share-token').checked && this.cfg.token) p.set('token', this.cfg.token);
+    const q = p.toString();
+    return `${location.origin}${location.pathname}${q ? `?${q}` : ''}`;
+  }
+
+  // ------------------------------------------------------------ historical replay
+  replayDialog() {
+    const dlg = $('#replay');
+    if (!dlg) return;
+    $('#replay-btn').onclick = () => {
+      const D = this.D;
+      $('#replay-start').value = localInput(D.replay ? D.now() : Date.now() - 3600 * 1000);
+      $('#replay-start').max = localInput(Date.now());
+      const sp = D.replay ? D.replay.speed : 1;
+      dlg.querySelectorAll('input[name=speed]').forEach((r) => { r.checked = Number(r.value) === sp; });
+      $('#replay-live').hidden = !D.replay;
+      dlg.returnValue = '';
+      dlg.showModal();
+    };
+    dlg.addEventListener('close', () => {
+      if (dlg.returnValue === 'live') this.goLive();
+      if (dlg.returnValue !== 'start') return;
+      const t = new Date($('#replay-start').value).getTime(); // datetime-local is parsed as local time
+      const sp = Number(dlg.querySelector('input[name=speed]:checked')?.value || 1);
+      if (Number.isFinite(t)) { this.D.setReplay(t, sp); this.h.kick?.(); }
+    });
+    // controls on the replay bar
+    const bar = $('#replaybar');
+    bar.innerHTML = `<span class="rp">REPLAY</span><span class="rt"></span>
+      <button data-act="pause" title="Pause / play"></button>
+      <span class="sp">${SPEEDS.map((v) => `<button data-speed="${v}" title="${v}× speed">${v}×</button>`).join('')}</span>
+      <button data-act="live" title="Back to live data">Live</button>`;
+    bar.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.speed) this.D.setSpeed(Number(b.dataset.speed));
+      if (b.dataset.act === 'pause') this.D.setPaused(!this.D.replay?.paused);
+      if (b.dataset.act === 'live') this.goLive();
+      this.h.kick?.();
+    });
+  }
+
+  goLive() {
+    if (!this.D.replay) return;
+    this.D.setReplay(null);
+    this.h.kick?.();
+  }
+
+  // replay state changed: address bar, replay bar, menu entries
+  syncReplay(r) {
+    const p = new URLSearchParams(location.search);
+    if (r) { p.set('start', isoSec(r.base)); p.set('speed', String(r.speed)); } else { p.delete('start'); p.delete('speed'); }
+    const q = p.toString();
+    history.replaceState(null, '', location.pathname + (q ? `?${q}` : '') + location.hash);
+    const bar = $('#replaybar');
+    if (bar) {
+      bar.hidden = !r;
+      if (r) {
+        bar.querySelector('[data-act=pause]').textContent = r.paused ? '▶' : '❚❚';
+        bar.querySelectorAll('[data-speed]').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === r.speed));
+      }
+    }
+    const lb = $('#live-btn');
+    if (lb) lb.hidden = !r;
+    const sub = $('.name small');
+    if (sub) sub.textContent = `n-butane · Ahuora lab · ${r ? 'replay' : 'live'}`;
+    this.clock();
   }
 
   // Phones: the side panel becomes a bottom sheet. Collapsed, it shows the view title and a
@@ -195,6 +333,11 @@ export class UI {
     this.view = v;
     document.querySelectorAll('#views button').forEach((b) => b.classList.toggle('active', b.dataset.id === v.id));
     document.body.dataset.view = v.id;
+    // keep ?view= in the address so a reload or copied address opens the same view
+    const p = new URLSearchParams(location.search);
+    if (v.id === 'overview') p.delete('view'); else p.set('view', v.id);
+    const q = p.toString();
+    history.replaceState(null, '', location.pathname + (q ? `?${q}` : '') + location.hash);
     $('#p-title').textContent = v.title;
     $('#p-desc').textContent = v.desc;
     const k = $('#kpis');
@@ -232,15 +375,17 @@ export class UI {
   clock() {
     const D = this.D;
     const st = $('#status');
-    st.className = `pill ${D.status}`;
-    if (D.status === 'live') st.textContent = 'LIVE';
+    st.className = `pill ${D.replay && D.status !== 'error' ? 'replay' : D.status}`;
+    if (D.replay) st.textContent = D.status === 'stale' ? 'REPLAY · NO DATA' : D.replay.paused ? 'REPLAY ❚❚' : `REPLAY ${D.replay.speed}×`;
+    else if (D.status === 'live') st.textContent = 'LIVE';
     else if (D.status === 'stale') st.textContent = 'STALE';
     else if (D.status === 'error') st.textContent = 'NO CONNECTION';
     else st.textContent = 'CONNECTING';
     st.title = D.error || '';
-    $('#clock').textContent = D.latest
-      ? `data ${new Date(D.latest).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
-      : '';
+    $('#clock').textContent = D.replay ? fmtWhen(D.now())
+      : D.latest ? `data ${new Date(D.latest).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : '';
+    const rt = document.querySelector('#replaybar .rt');
+    if (rt && D.replay) rt.textContent = fmtWhen(D.now());
   }
 
   refresh() {
@@ -277,7 +422,7 @@ export class UI {
     for (const [, y] of data) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
     if (hi - lo < 1e-6) { hi += 1; lo -= 1; }
     const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
-    const t0 = Date.now() - this.cfg.trendMinutes * 60000, t1 = Date.now();
+    const t1 = D.now(), t0 = t1 - this.cfg.trendMinutes * 60000;
     const X = (t) => ((t - t0) / (t1 - t0)) * W, Yy = (y) => H - ((y - lo) / (hi - lo)) * H;
     const stroke = m.kind === 'T' ? cssTemp(v) : getComputedStyle(document.body).getPropertyValue('--accent') || '#5cc8ff';
     const grad = g.createLinearGradient(0, 0, 0, H);

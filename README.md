@@ -36,12 +36,27 @@ Dragging or scrolling the 3D view leaves presentation mode.
 | `poll` | 2000 | live value refresh (ms) |
 | `trend` | 60 | sparkline window (minutes) |
 | `token` | — | InfluxDB read-only token; saved in this browser, then removed from the address bar |
+| `view` | overview | view to open on: `hp`, `so`, `px`, `ww`, `hw` (kept in sync as you switch views) |
+| `start` | — | historical replay start, e.g. `2026-11-26T00:30:00Z` (UTC) or a local time without `Z` |
+| `speed` | 1 | replay speed (1, 5, 10, 30, 60 from the menu; any number works in the URL) |
 | `url`, `org`, `bucket` | see `js/config.js` | InfluxDB connection |
 
 Example kiosk URL: `index.html?present&cycle=45&token=YOUR_READ_ONLY_TOKEN`
 
-The token is not stored in this repo. On first visit the page asks for it (🔑 button to change it)
-and keeps it in that browser's localStorage.
+The token is not stored in this repo. On first visit the page asks for it (⋮ menu → Change
+InfluxDB token to change it) and keeps it in that browser's localStorage.
+
+## ⋮ menu
+
+- **Share link…** builds a link to copy (or send with the phone's share sheet). Options:
+  include the access token (so the recipient doesn't have to enter one), open on the current
+  view, and, while replaying, start at the current replay time and speed. A link with the
+  token gives read access to anyone who has it.
+- **Historical replay…** plays logged data from a chosen start time at 1–60× as if it were
+  live. Every query asks for the last values before the replay time instead of now, and
+  trends cover the hour before it. A purple bar under the header shows the replay time and
+  has pause, speed and Live buttons. The address keeps `?start=…&speed=…` up to date, and
+  replay switches back to live when it catches up with the present.
 
 ## What is shown
 
@@ -57,7 +72,11 @@ and keeps it in that browser's localStorage.
   Labels turn grey when a tag is stale and red ("BAD") for sensor faults (−32768).
 - **Soft sensors** in the side panel: duties from water-side ΔT × flow, COP, energy-balance
   error, butane saturation temperatures (Antoine), superheat, subcooling, Carnot COP,
-  and an estimate of steam production.
+  internal heat exchanger duty, and an estimate of steam production.
+- **IHX duty** (liquid side) = HP-MF01 × (h(HP-TT04) − h(HP-TT05)), with both points taken
+  at HP-PT03. Liquid n-butane enthalpy comes from integrating the DIPPR 100 heat-capacity
+  equation (Perry's); liquid enthalpy hardly depends on pressure, so HP-PT03 is used to check
+  that both points are below its saturation temperature (otherwise the duty shows —).
 
 - **Compressor HP-CO01** is drawn as the installed Bitzer 4NESP-20 semi-hermetic
   4-cylinder piston compressor (Bitzer green): motor housing with suction valve, two

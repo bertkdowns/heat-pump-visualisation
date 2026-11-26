@@ -212,15 +212,61 @@ body.presenting #legend .hint { display: none; }
   .tag .tn { display: none; }
 }
 
-/* ---------------- connect dialog ---------------- */
-#connect { background: #111823; color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px;
-  width: min(440px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
-#connect::backdrop { background: rgba(5, 8, 12, .65); backdrop-filter: blur(3px); }
-#connect h2 { margin: 0 0 8px; font-size: 16px; }
-#connect p { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
-#connect code { font-family: var(--mono); color: var(--text); }
-#connect input { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: #0b0f16;
-  color: var(--text); font: 13px var(--mono); }
+/* ---------------- dialogs (connect, share, replay) ---------------- */
+#connect, .modal { background: #111823; color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px;
+  width: min(460px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
+#connect::backdrop, .modal::backdrop { background: rgba(5, 8, 12, .65); backdrop-filter: blur(3px); }
+#connect h2, .modal h2 { margin: 0 0 8px; font-size: 16px; }
+#connect p, .modal p { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+#connect code, .modal code { font-family: var(--mono); color: var(--text); }
+#connect input, .modal input:not([type=checkbox]):not([type=radio]) { width: 100%; padding: 8px 10px; border-radius: 6px;
+  border: 1px solid var(--line); background: #0b0f16; color: var(--text); font: 13px var(--mono); }
 #connect .err { color: var(--err); min-height: 1em; margin: 8px 0 0; }
-#connect menu { display: flex; justify-content: flex-end; margin: 12px 0 0; padding: 0; }
-#connect .primary { background: var(--accent); color: #04121c; border: 0; border-radius: 6px; padding: 7px 16px; font-weight: 600; cursor: pointer; }
+#connect menu, .modal menu { display: flex; justify-content: flex-end; gap: 8px; margin: 14px 0 0; padding: 0; }
+.modal menu button:not(.primary) { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); border-radius: 6px;
+  padding: 7px 14px; cursor: pointer; }
+#connect .primary, .modal .primary { background: var(--accent); color: #04121c; border: 0; border-radius: 6px; padding: 7px 16px;
+  font-weight: 600; cursor: pointer; }
+.modal .chk { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 10px; font-size: 13px; cursor: pointer; }
+.modal .chk input { margin-top: 2px; accent-color: var(--accent); }
+.modal .chk small { display: block; color: var(--muted); font-size: 11px; }
+.modal .copyrow { display: flex; gap: 6px; margin-top: 14px; }
+.modal .copyrow input { font-size: 11px; }
+.modal .note { margin: 8px 0 0; font-size: 11px; min-height: 1em; }
+.modal .note.ok { color: var(--ok); }
+.modal .field { display: block; margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+.modal .field input { margin-top: 5px; color-scheme: dark; }
+.seg { display: flex; margin-top: 5px; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg label { flex: 1; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg span { display: block; text-align: center; padding: 7px 0; cursor: pointer; font: 600 12px var(--mono); color: var(--text);
+  border-left: 1px solid var(--line); }
+.seg label:first-child span { border-left: 0; }
+.seg input:checked + span { background: rgba(92, 200, 255, 0.18); color: #fff; }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ---------------- ⋮ menu ---------------- */
+#menu-wrap { position: relative; }
+#menu-btn { font-size: 16px; line-height: 1; padding: 4px 9px; }
+#menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 220px; padding: 5px; z-index: 20;
+  background: #111823; border: 1px solid var(--line); border-radius: 9px; box-shadow: 0 12px 40px rgba(0, 0, 0, .55);
+  display: flex; flex-direction: column; }
+#menu[hidden] { display: none; }
+#menu button { all: unset; display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 6px; cursor: pointer;
+  font-size: 13px; color: var(--text); white-space: nowrap; }
+#menu button:hover, #menu button:focus-visible { background: rgba(255, 255, 255, 0.07); }
+#menu button i { font-style: normal; width: 18px; text-align: center; }
+#menu button[hidden] { display: none; }
+
+/* ---------------- replay ---------------- */
+.pill.replay { color: #c99bff; }
+#replaybar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 8px 6px 10px; border-radius: 8px;
+  background: rgba(150, 100, 255, 0.14); border: 1px solid #a074ff; backdrop-filter: blur(6px); font-size: 12px; }
+#replaybar[hidden] { display: none; }
+#replaybar .rp { font: 700 10px var(--mono); letter-spacing: .08em; color: #c99bff; }
+#replaybar .rt { font: 600 12px var(--mono); color: #fff; margin-right: auto; }
+#replaybar button { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px;
+  cursor: pointer; font: 600 11px var(--mono); }
+#replaybar button.on { background: rgba(160, 116, 255, 0.35); border-color: #a074ff; color: #fff; }
+#replaybar .sp { display: flex; gap: 2px; }
+.modal .chk[hidden] { display: none; }

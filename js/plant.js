@@ -510,7 +510,7 @@ export class Plant {
       tube: { kind: 'tp', dir: 1, tA: 'HPTT06', tB: 'HPTT07', flow: mf(TP) },
       shell: { kind: 'water', dir: -1, tA: 'SOTT31', tB: 'SOTT32', flow: lpm('SOVF31', 1.3, 160) },
     });
-    this.eq('hp', [-5, -0.1, 6.3], 'EVAPORATOR + IHX', 'HP-EVP01', (D) => `Q ${fmt(D.X.qEvap, 1)} kW`);
+    this.eq('hp', [-5, -0.1, 6.3], 'EVAPORATOR + IHX', 'HP-EVP01', (D) => `Q ${fmt(D.X.qEvap, 1)} kW · IHX ${fmt(D.X.qIHX, 2)} kW`);
 
     // superheat control: TT07/PT01 -> EEV
     this.signal([[-0.9, Y + 0.25, 4.6], [-0.9, Y + 0.25, 3.5], [-11.5, Y + 0.25, 3.5], [-11.5, Y + 0.25, 2.8]]);

@@ -182,6 +182,15 @@ export function waterTsat(barA) {
   return 1810.94 / (8.14019 - Math.log10(barA * 750.062)) - 244.485;
 }
 
+// Liquid n-butane enthalpy (kJ/kg, relative to 0 °C) from the DIPPR 100 heat-capacity
+// equation (Perry's, 135–400 K): integral of cp dT. Liquid enthalpy barely depends on
+// pressure, so the pressure is only used to check the butane is still liquid.
+const BUTANE_M = 58.12;
+const cpInt = (T) => 191030 * T - 1675 * T ** 2 / 2 + 12.5 * T ** 3 / 3 - 0.03874 * T ** 4 / 4 + 4.6121e-5 * T ** 5 / 5;
+export function butaneLiqH(tC) {
+  return (cpInt(tC + 273.15) - cpInt(273.15)) / BUTANE_M / 1000;
+}
+
 export function derived(V) {
   const atm = 1.01325;
   const X = {};
@@ -197,6 +206,10 @@ export function derived(V) {
   X.tSatCond = butaneTsat(V('HPPT03') + atm);
   X.shCalc = V('HPTT01') - X.tSatEvap;
   X.subcool = X.tSatCond - V('HPTT04');
+  // Internal heat exchanger, liquid side: HP-TT04 -> HP-TT05, both at HP-PT03 (assumed).
+  // Only valid while both points are subcooled liquid.
+  const liquid = V('HPTT04') < X.tSatCond && V('HPTT05') < X.tSatCond;
+  X.qIHX = liquid ? (V('HPMF01') / 3600) * (butaneLiqH(V('HPTT04')) - butaneLiqH(V('HPTT05'))) : NaN;
   X.pr = (V('HPPT02') + atm) / (V('HPPT01') + atm);
   X.lift = X.tSatCond - X.tSatEvap;
   X.copCarnot = (X.tSatCond + 273.15) / X.lift;
